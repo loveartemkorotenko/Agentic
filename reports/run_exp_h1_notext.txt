@@ -1,0 +1,32 @@
+data end (UTC): 2026-09-07 05:39:33+00:00  |  rows train/val/test = 102,917/46,463/69,840
+train 2026-06-05 00:00:00+00:00 -> 2026-07-19 04:00:00+00:00 | val 2026-07-19 06:00:00+00:00 -> 2026-08-08 04:00:00+00:00 | test 2026-08-08 06:00:00+00:00 -> 2026-09-07 05:00:00+00:00
+best iteration: 94
+
+== all ==
+                         n  pos_rate  pr_auc  roc_auc   brier      f1
+lightgbm           69840.0    0.4124  0.9469   0.9493  0.0753  0.8736
+persistence        69840.0    0.4124  0.8462   0.8778  0.1030  0.8602
+same_hour_last_7d  69840.0    0.4124  0.8464   0.8606  0.1512  0.7300
+occ_mean_24h       69840.0    0.4124  0.8977   0.9122  0.1252  0.7882
+climatology        69840.0    0.4124  0.8479   0.8636  0.1437  0.7325
+
+== onset_only ==
+                         n  pos_rate  pr_auc  roc_auc   brier      f1
+lightgbm           47194.0    0.1415  0.4281   0.7982  0.1010  0.2843
+persistence        47194.0    0.1415  0.1415   0.5000  0.1415  0.0000
+same_hour_last_7d  47194.0    0.1415  0.3426   0.7274  0.1182  0.3581
+occ_mean_24h       47194.0    0.1415  0.4334   0.8026  0.1030  0.4362
+climatology        47194.0    0.1415  0.3502   0.7474  0.1284  0.3767
+
+== macro over raions, onset rows ==
+ {
+ "n_units": 68,
+ "mean_pr_auc": {
+  "lightgbm": 0.3062,
+  "persistence": 0.2056,
+  "same_hour_last_7d": 0.2302,
+  "occ_mean_24h": 0.2943,
+  "climatology": 0.2178
+ },
+ "lightgbm_beats_best_baseline_share": 0.529
+}

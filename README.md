@@ -69,10 +69,33 @@ are not comparable across windows (different raions pass the min-positives filte
 Shorter horizons (1/2/3 h, single split): lift over the best baseline is +0.026 / +0.009 / +0.004,
 i.e. almost none; for Kyiv F1 at 1-2 h is ~0. Alert history alone does not contain the launch signal.
 
+## Optional: text data (public Telegram channel)
+`python -m src.telegram kpszsu --since 2026-06-01` scrapes the public web preview of the channel
+(22k posts, publication timestamps only, ~1 request/s). Features per origin `t` are counts of posts
+published **before t** (fully elapsed hours) that mention the raion's oblast (Ukrainian place-name
+stems) and/or a threat keyword (UAV / missile / KAB), plus national post volume and hours since
+the last mention. `tests/test_text_leakage.py` checks that erasing posts at/after `t` does not
+change any text feature (verified to fail with an injected 1-hour look-ahead).
+
+Controlled comparison (same period 2026-06-01.., test = last 30 days, val 20 days, only ~50 days of
+training because the text archive is short). Macro PR-AUC on onset rows, LightGBM without -> with text:
+
+| horizon | no text | with text | best baseline |
+|---|---|---|---|
+| 1 h | 0.306 | 0.300 | 0.294 |
+| 2 h | 0.403 | 0.402 | 0.410 |
+| 3 h | 0.444 | 0.442 | 0.454 |
+| 6 h | 0.538 | 0.545 | 0.568 |
+
+**No measurable gain.** The hypothesis "text helps most at short horizons" was not supported.
+Likely reasons: the channel reports threats roughly simultaneously with the alerts themselves, so
+there is little lead time; keyword matching is crude (oblast-level, no raion localisation); and
+with ~50 training days a gradient-boosted model cannot even beat a 24 h occupancy baseline.
+The fair conclusion is "inconclusive, probably small", not "text works".
+
 ## Limitations
 * Results vary with the period (see rolling-origin table).
-* Only alert history is used; news / Telegram text was not added (possible extension: only
-  posts timestamped before `t`).
+* Text covers one channel and ~100 days; posts show current (possibly edited) text.
 * Alert history cannot see the cause (launch events), so onset timing is the weak point.
 
 ## Run
