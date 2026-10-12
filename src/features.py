@@ -57,6 +57,11 @@ def build_dataset(idx, units, unit_oblast, state, starts, horizon_h: int,
     target = (cs[end] - cs[b]) > 0
     target_complete = (b + horizon_h * BPH) <= T
     del cs
+    # remaining alert time (target of the duration task); NaN if the data ends mid-alert
+    nxt = np.where(~state, ar, np.int32(T))
+    nxt = np.minimum.accumulate(nxt[::-1], axis=0)[::-1]
+    rem = np.where(nxt[b] >= T, np.nan, (nxt[b] - b[:, None]) * RES).astype(np.float32)
+    del nxt
 
     # --- hourly rolling features (strictly past hours) ----------------------
     def past_sum(a, w):  # sum of a[i-w .. i-1]
@@ -110,6 +115,7 @@ def build_dataset(idx, units, unit_oblast, state, starts, horizon_h: int,
         d["oblast"] = unit_oblast[k]
         d["time"] = hour_ts[valid]
         d["y"] = target[valid, k].astype(np.int8)
+        d["rem_min"] = rem[valid, k]
         frames.append(pd.DataFrame(d))
     out = pd.concat(frames, ignore_index=True)
     out["unit"] = out["unit"].astype("category")

@@ -47,7 +47,7 @@ def metrics(y, p, thr):
 
 
 def feature_cols(df, drop_ids=False):
-    skip = {"y", "time"} | ({"unit", "oblast"} if drop_ids else set())
+    skip = {"y", "time", "rem_min"} | ({"unit", "oblast"} if drop_ids else set())
     return [c for c in df.columns if c not in skip]
 
 

@@ -28,7 +28,7 @@ def test_no_future_information():
     sf[cut:] = False
     erased = build_dataset(idx, units, uo, st, sf, H, require_target=False)
 
-    feat_cols = [c for c in full.columns if c not in ("y", "time", "unit", "oblast")]
+    feat_cols = [c for c in full.columns if c not in ("y", "rem_min", "time", "unit", "oblast")]
     f = full[full["time"] <= cut_ts].reset_index(drop=True)
     t = erased[erased["time"] <= cut_ts].reset_index(drop=True)
     assert len(f) == len(t) > 1000 and (f["time"] == t["time"]).all()
