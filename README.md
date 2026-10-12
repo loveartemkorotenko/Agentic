@@ -85,6 +85,9 @@ Honest weak spot: the nominal 80% interval. Raw q10-q90 covers only 67% on test;
 calibration on validation 75%, still below 80% because the regime shifts between validation and test.
 The simple baseline intervals reach 78-80% coverage with a narrower median width (440-455 vs 635 min),
 so on intervals the model is **not** better than the baseline.
+Calibration variants tried (`reports/duration_intervals.json`): conformal on the last 3 validation weeks only (0.761),
+Mondrian per elapsed-time bucket (0.756), both (0.761) vs global CQR (0.754): almost no gain, so the shortfall is
+within-test drift, not a stale calibration window. Next idea: adaptive conformal inference with delayed feedback.
 Hyper-parameter tuning (random search on validation log-loss) and a LightGBM + logistic-regression ensemble
 gave no gain on test (PR-AUC 0.725 / 0.729 vs 0.727), so the default parameters are kept.
 
