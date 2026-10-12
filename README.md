@@ -55,8 +55,8 @@ window**). Week-block bootstrap over the pooled onset rows of all 23 test weeks:
 **+0.055, 95% CI [0.034, 0.072]**. (The Brier improvement, +0.083, is inflated because the occupancy
 baseline is not a calibrated probability, so rank-based PR-AUC is the fair measure.)
 
-Shorter horizons (1/2/3 h): lift over the best baseline is only +0.026 / +0.009 / +0.004, and Kyiv F1 at
-1-2 h is about 0. Alert history alone does not contain the launch signal.
+Other horizons (1/2/3 h, single split, no CIs): lift over the best baseline is +0.025 / +0.009 / +0.004 (6 h: +0.014),
+i.e. small everywhere, and Kyiv F1 at 1-2 h is about 0. Alert history alone does not contain the launch signal.
 
 Ablations (all on the main split): dropping raion/oblast id features -> 0.529 (worse); data-driven
 neighbour features (top-5 correlated raions, estimated on train only) -> 0.535 (no gain, optional
@@ -82,10 +82,19 @@ Paired week-block bootstrap (10 test weeks): MAE improvement **+48.7 min, 95% CI
 (60 min) improvement **+0.025, CI [0.022, 0.027]**.
 
 Honest weak spot: the nominal 80% interval. Raw q10-q90 covers only 67% on test; after conformal
-calibration on validation 75%, still below 80% because the regime shifts between validation and test (the
-baseline intervals reach 78-80% but are narrower only in the point sense, i.e. they are not better).
+calibration on validation 75%, still below 80% because the regime shifts between validation and test.
+The simple baseline intervals reach 78-80% coverage with a narrower median width (440-455 vs 635 min),
+so on intervals the model is **not** better than the baseline.
 Hyper-parameter tuning (random search on validation log-loss) and a LightGBM + logistic-regression ensemble
 gave no gain on test (PR-AUC 0.725 / 0.729 vs 0.727), so the default parameters are kept.
+
+## Dashboard (static, historical only)
+`python -m src.build_dashboard` writes `docs/index.html`, a self-contained page (no external libraries, dark
+mode, table view for every chart): per-raion distribution of alert durations, time-of-day profile and weekly
+hours in alert over the last 12 months of data, plus the honest model-quality summary above. **It contains no
+live forecasts on purpose**: an "alert ends in ~X min" estimate could make someone leave a shelter early, and
+the model's errors (median ~110 min) are far too large for that. Serve it with
+`python -m http.server --directory docs` or GitHub Pages.
 
 ## Optional: text data (public Telegram channels)
 `python -m src.telegram <channel> --since 2026-06-01` scrapes the public web preview (~1 request/s,
