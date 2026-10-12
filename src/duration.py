@@ -72,6 +72,35 @@ def fit(tr, va, cols, objective, y_tr, y_va, **kw):
     return lgb.train(p, d_tr, 2000, valid_sets=[d_va], callbacks=[lgb.early_stopping(100, verbose=False)])
 
 
+def tune_params(tr, va, cols, n_iter=14, seed=3):
+    """Random search on VALIDATION log-loss of the 'ends within 60 min' classifier (test untouched)."""
+    rng = np.random.default_rng(seed)
+    ytr, yva = (tr["rem_cap"] <= 60).astype(int), (va["rem_cap"] <= 60).astype(int)
+    best, best_score = {}, np.inf
+    for _ in range(n_iter):
+        cand = dict(num_leaves=int(rng.choice([15, 31, 63, 127])), min_child_samples=int(rng.choice([50, 100, 300, 600])),
+                    feature_fraction=float(rng.choice([0.5, 0.7, 0.9])), lambda_l2=float(rng.choice([1, 5, 20, 50])),
+                    learning_rate=float(rng.choice([0.03, 0.05, 0.08])))
+        m = fit(tr, va, cols, "binary", ytr, yva, **cand)
+        sc = m.best_score["valid_0"]["binary_logloss"]
+        if sc < best_score:
+            best, best_score = cand, sc
+    print("tuned params:", best, "val logloss", round(best_score, 4))
+    return best
+
+
+def lr_proba(tr, va, te, cols, h):
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+    num = [c for c in cols if c not in ("unit", "oblast")]
+    med = tr[num].median()
+    prep = lambda x: np.log1p(x[num].fillna(med).clip(lower=0))
+    model = make_pipeline(StandardScaler(), LogisticRegression(C=0.3, max_iter=400))
+    model.fit(prep(tr), (tr["rem_cap"] <= h).astype(int))
+    return model.predict_proba(prep(va))[:, 1], model.predict_proba(prep(te))[:, 1]
+
+
 def week_bootstrap(time, err_a, err_b, n_boot=2000, seed=0):
     """Paired block bootstrap over calendar weeks: mean(err_b - err_a) with 95% CI (>0 => a better)."""
     wk = pd.Series(time.dt.tz_localize(None).dt.to_period("W").astype(str).to_numpy())
@@ -90,7 +119,7 @@ def run(since="2024-01-01", test_days=60, val_days=60, text=None, tag="", tune=N
     print(f"origins with active alert: train/val/test = {len(tr):,}/{len(va):,}/{len(te):,} | data end {data_end}")
     cols = feature_cols(d, False)
     cols = [c for c in cols if c not in ("rem_cap", "bucket")]
-    kw = tune or {}
+    kw = tune_params(tr, va, cols) if tune == "search" else (tune or {})
 
     ytr, yva = np.log1p(tr["rem_cap"]), np.log1p(va["rem_cap"])
     q = {a: fit(tr, va, cols, "quantile", ytr, yva, alpha=a, **kw) for a in (0.1, 0.5, 0.9)}
@@ -107,6 +136,13 @@ def run(since="2024-01-01", test_days=60, val_days=60, text=None, tag="", tune=N
     clf = {h: fit(tr, va, cols, "binary", (tr["rem_cap"] <= h).astype(int), (va["rem_cap"] <= h).astype(int), **kw)
            for h in (60, 120)}
     p_end = {h: m.predict(te[cols], num_iteration=m.best_iteration) for h, m in clf.items()}
+
+    # ensemble of LightGBM and a logistic regression for P(end <= 60 min); weight picked on validation
+    pv_lr, pt_lr = lr_proba(tr, va, te, cols, 60)
+    pv_gb = clf[60].predict(va[cols], num_iteration=clf[60].best_iteration)
+    yv60 = (va["rem_cap"] <= 60).astype(int)
+    w = min(np.linspace(0, 1, 5), key=lambda a: brier_score_loss(yv60, a * pv_gb + (1 - a) * pv_lr))
+    p_ens = w * p_end[60] + (1 - w) * pt_lr
 
     glob, uni = baseline_tables(tr)
     bases = {"bucket": baseline_predict(te, glob, uni, False), "unit_bucket": baseline_predict(te, glob, uni, True)}
@@ -137,6 +173,10 @@ def run(since="2024-01-01", test_days=60, val_days=60, text=None, tag="", tune=N
         for n, p in [("lightgbm", p_end[h])] + [(n, b[f"p{h}"].to_numpy()) for n, b in bases.items()]:
             row[n] = {"pr_auc": round(average_precision_score(yy, p), 4), "roc_auc": round(roc_auc_score(yy, p), 4),
                       "brier": round(brier_score_loss(yy, np.clip(p, 0, 1)), 4)}
+        if h == 60:
+            row["logreg"] = {"pr_auc": round(average_precision_score(yy, pt_lr), 4), "brier": round(brier_score_loss(yy, pt_lr), 4)}
+            row["ensemble"] = {"weight_lgbm": float(w), "pr_auc": round(average_precision_score(yy, p_ens), 4),
+                               "roc_auc": round(roc_auc_score(yy, p_ens), 4), "brier": round(brier_score_loss(yy, p_ens), 4)}
         res["ends_within"][f"{h}min"] = row
 
     # paired week-block bootstrap: LightGBM vs the strongest baseline on MAE
@@ -169,5 +209,6 @@ if __name__ == "__main__":
     ap.add_argument("--val-days", type=int, default=60)
     ap.add_argument("--text", default=None, help="comma-separated scraped channels")
     ap.add_argument("--tag", default="")
+    ap.add_argument("--tune", action="store_true")
     a = ap.parse_args()
-    run(a.since, a.test_days, a.val_days, a.text, a.tag)
+    run(a.since, a.test_days, a.val_days, a.text, a.tag, "search" if a.tune else None)

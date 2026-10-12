@@ -14,6 +14,7 @@ from src.telegram import load as load_posts
 from src.text_features import text_features
 
 ROOT = Path(__file__).resolve().parents[1]
+LAST = {}
 FOCUS = ["Kyiv City", "Kharkivska oblast / Kharkivskyi raion", "Dnipropetrovska oblast / Dniprovskyi raion",
          "Odeska oblast / Odeskyi raion", "Lvivska oblast / Lvivskyi raion"]
 
@@ -105,6 +106,9 @@ def run(horizon_h=6, test_days=60, val_days=60, since="2024-01-01", drop_ids=Fal
     for name, p in preds_te.items():
         results["all"][name] = metrics(te["y"].to_numpy(), p, thr[name])
         results["onset_only"][name] = metrics(te["y"].to_numpy()[onset], p[onset], thr[name])
+    global LAST  # kept so walk_forward can run a block bootstrap over pooled windows
+    LAST = {"time": te["time"].to_numpy()[onset], "y": te["y"].to_numpy()[onset],
+            "model": preds_te["lightgbm"][onset], "base": preds_te["occ_mean_24h"][onset]}
     # headline: macro average over raions, onset rows only (no alert at t), raions with
     # enough of both classes. Pooled numbers are dominated by saturated frontline raions.
     yt = te["y"].to_numpy(); unit_arr = te["unit"].astype(str).to_numpy()

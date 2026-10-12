@@ -1,50 +1,47 @@
-# Air-raid alert forecasting for Ukrainian raions
+# Air-raid alerts in Ukraine: onset and end-of-alert forecasting
 
-Mini-project (KSE Stage 2): time-series analysis of air-raid alerts in Ukraine.
+Mini-project (KSE Stage 2): time-series analysis of air-raid alerts, per raion (118 raions + Kyiv City).
+Two tasks, built with an AI assistant as the main engineering tool (see the AI log):
 
-**Task.** At the start of every hour `t`, for every raion: will an air-raid alert be active
-in that raion at any moment in `[t, t + 6h)`? Binary classification, 119 spatial units
-(118 raions + Kyiv City), evaluated on the most recent 60 days of available data.
+| | Task | Result |
+|---|---|---|
+| A | **Onset**: will an alert be active in a raion at any time in the next 6 h? | Small but statistically significant lift over strong baselines. Almost no skill at 1-3 h. |
+| B | **End of alert**: an alert is active now, how much longer will it last? | Clear gains over baselines. This is the more useful and more learnable task. |
+
+> **Research prototype, not safety advice.** Always follow official alerts. Never use a model estimate
+> to decide when to leave a shelter.
 
 ## Data
 Official alert history from
 [Vadimkin/ukrainian-air-raid-sirens-dataset](https://github.com/Vadimkin/ukrainian-air-raid-sirens-dataset)
-(`official_data_en.csv`, downloaded automatically on first run).
-**The latest record in the dataset is 2026-09-07**, so the test period is 2026-07-09 .. 2026-09-07.
+(`official_data_en.csv`, downloaded on first run). **The latest record is 2026-09-07**, so the test
+periods end there.
 
-Granularity changed over time: until mid-2025 alerts were published per oblast, since late
-2025 almost exclusively per raion (e.g. 3,000 oblast records in 2025-04 vs 48 in 2025-12).
-To keep one consistent definition, an oblast-level alert is expanded to all raions of that
-oblast and hromada alerts are mapped to their raion. (An early version that filtered
-`level == "oblast"` silently dropped the entire recent period.) Training uses data from 2024-01-01.
+Granularity changed over time: until mid-2025 alerts were published per oblast, since late 2025 almost only
+per raion (3,000 oblast records in 2025-04 vs 48 in 2025-12). To keep one definition, an oblast-level alert
+is expanded to all raions of that oblast and hromada alerts are mapped to their raion. (An early version that
+filtered `level == "oblast"` silently dropped the entire recent period.) Training uses data from 2024-01-01.
 
 ## Leakage control
-* Forecast origin `t` uses only grid steps (5 min) strictly before `t` and fully elapsed hours.
-  The end time of an ongoing alert is never used.
-* Split is `train | embargo | validation | embargo | test` with embargo = horizon (6 h), so no
-  training target window overlaps the evaluation period. Early stopping and F1 thresholds use
-  validation only.
-* `tests/test_leakage.py` recomputes all features after deleting every observation after a
-  cut-off and asserts identical values for all origins up to the cut-off. It was verified to
-  fail when a deliberate look-ahead is injected.
+* Forecast origin `t` uses only grid steps (5 min) strictly before `t` and fully elapsed hours. The end time
+  of a running alert is never a feature.
+* Split `train | embargo | validation | embargo | test`; embargo = horizon (6 h for A, 24 h for B). Early
+  stopping, thresholds, conformal calibration and tuning use validation only.
+* `tests/test_leakage.py` erases every observation at/after `t` (grid length unchanged, cut exactly on an
+  origin) and asserts identical features for all origins up to and including `t`;
+  `tests/test_text_leakage.py` does the same for text features. Both were verified to **fail** when a
+  one-step (alerts) / one-hour (text) look-ahead is injected.
 
-## Model
-LightGBM on: current alert state, time since last alert, current alert duration, rolling
-occupancy / episode counts over 3-168 h, same-hour-of-day profile over the previous 7 days,
-share of raions in alert in the same oblast and nationally, hour-of-day, day-of-week, raion id.
+## Task A: onset (6 h horizon)
+LightGBM on current state, time since last alert, run length, rolling occupancy / episode counts (3-168 h),
+same-hour-of-day profile (previous 7 days), oblast/national share in alert, calendar, raion id.
+Baselines: persistence, same-hour-7d, 24 h mean occupancy, per-raion hour-of-day climatology.
 
-Baselines: persistence, same hour over previous 7 days, 24 h mean occupancy, per-raion
-hour-of-day climatology.
+Pooled numbers are inflated (9 frontline raions are almost always in alert), so the headline is the
+**onset subset** (no alert at `t`), macro-averaged over raions with enough examples
+(test 2026-07-09..2026-09-07, 81 raions):
 
-## Results (test: 2026-07-09 .. 2026-09-07, horizon 6 h)
-Pooled over all raions, PR-AUC (positive rate 50.6%):
-lightgbm 0.950, occ_mean_24h 0.929, climatology 0.913, same_hour_7d 0.885, persistence 0.753.
-
-Pooled numbers are inflated because 9 frontline raions are in alert almost permanently and the
-target is trivially 1. The honest headline is the **onset subset** (no alert active at `t`),
-macro-averaged over 81 raions with enough examples of both classes:
-
-| method | macro PR-AUC (onset) |
+| method | macro PR-AUC |
 |---|---|
 | **LightGBM** | **0.535** |
 | occ_mean_24h | 0.521 |
@@ -52,56 +49,63 @@ macro-averaged over 81 raions with enough examples of both classes:
 | same_hour_7d | 0.462 |
 | persistence | 0.456 (= base rate) |
 
-LightGBM beats the best baseline in 67% of raions, but the margin over a simple 24 h occupancy
-average is small: predicting *when a new wave starts* from alert history alone is hard.
+Rolling-origin check (`python -m src.walk_forward`, 5 x 30-day windows): lift over the best baseline
++0.021, +0.033, +0.042, +0.016, +0.003 (mean +0.023, positive in 5/5 windows, **shrinking in the latest
+window**). Week-block bootstrap over the pooled onset rows of all 23 test weeks: PR-AUC improvement
+**+0.055, 95% CI [0.034, 0.072]**. (The Brier improvement, +0.083, is inflated because the occupancy
+baseline is not a calibrated probability, so rank-based PR-AUC is the fair measure.)
 
-Ablations (same split, `reports/`): dropping raion/oblast id features -> 0.529 (worse);
-adding data-driven neighbour features (top-5 correlated raions, estimated on train only)
--> 0.535 (no gain, left optional via `--neighbors`).
+Shorter horizons (1/2/3 h): lift over the best baseline is only +0.026 / +0.009 / +0.004, and Kyiv F1 at
+1-2 h is about 0. Alert history alone does not contain the launch signal.
 
-## Robustness: rolling-origin validation (5 x 30-day windows, horizon 6 h)
-`python -m src.walk_forward` retrains for each window (own train / 45-day validation / embargo).
-Macro PR-AUC on onset rows, LightGBM minus best baseline: +0.021, +0.033, +0.042, +0.016, +0.003
-(mean +0.023, positive in 5/5 windows). The lift is consistent but small and **shrinks in the most
-recent window**, where LightGBM beats the best baseline in under half of raions. Absolute values
-are not comparable across windows (different raions pass the min-positives filter).
+Ablations (all on the main split): dropping raion/oblast id features -> 0.529 (worse); data-driven
+neighbour features (top-5 correlated raions, estimated on train only) -> 0.535 (no gain, optional
+`--neighbors`).
 
-Shorter horizons (1/2/3 h, single split): lift over the best baseline is +0.026 / +0.009 / +0.004,
-i.e. almost none; for Kyiv F1 at 1-2 h is ~0. Alert history alone does not contain the launch signal.
+## Task B: when does the alert end? (`python -m src.duration`)
+At hourly origins where an alert is active, predict the remaining minutes (capped at 24 h: a few
+frontline raions stay "in alert" for months; the cap avoids dominating the loss without selecting rows by
+outcome) and P(ends within 60 / 120 min). LightGBM quantile regression (q10/q50/q90 on log1p minutes), binary
+classifiers, and conformalised quantile regression (CQR) for the interval. Baselines use only the elapsed
+alert time (bucketed), globally or per raion, estimated on the training period.
 
-## Optional: text data (public Telegram channel)
-`python -m src.telegram kpszsu --since 2026-06-01` scrapes the public web preview of the channel
-(22k posts, publication timestamps only, ~1 request/s). Features per origin `t` are counts of posts
-published **before t** (fully elapsed hours) that mention the raion's oblast (Ukrainian place-name
-stems) and/or a threat keyword (UAV / missile / KAB), plus national post volume and hours since
-the last mention. `tests/test_text_leakage.py` checks that erasing posts at/after `t` does not
-change any text feature (verified to fail with an injected 1-hour look-ahead).
+Test 2026-07-09..2026-09-07, 44,095 hourly origins:
 
-Controlled comparison (same period 2026-06-01.., test = last 30 days, val 20 days, only ~50 days of
-training because the text archive is short). Macro PR-AUC on onset rows, LightGBM without -> with text:
+| metric | LightGBM | best baseline (per-raion x elapsed) |
+|---|---|---|
+| MAE of median forecast | **248 min** | 297 min |
+| P(end <= 60 min): PR-AUC | **0.727** | 0.645 |
+| P(end <= 60 min): Brier | **0.144** | 0.169 |
+| P(end <= 120 min): PR-AUC | **0.836** | 0.751 |
 
-| horizon | no text | with text | best baseline |
-|---|---|---|---|
-| 1 h | 0.306 | 0.300 | 0.294 |
-| 2 h | 0.403 | 0.402 | 0.410 |
-| 3 h | 0.444 | 0.442 | 0.454 |
-| 6 h | 0.538 | 0.545 | 0.568 |
+Paired week-block bootstrap (10 test weeks): MAE improvement **+48.7 min, 95% CI [37.6, 60.7]**; Brier
+(60 min) improvement **+0.025, CI [0.022, 0.027]**.
 
-**No measurable gain.** The hypothesis "text helps most at short horizons" was not supported.
-Likely reasons: the channel reports threats roughly simultaneously with the alerts themselves, so
-there is little lead time; keyword matching is crude (oblast-level, no raion localisation); and
-with ~50 training days a gradient-boosted model cannot even beat a 24 h occupancy baseline.
-The fair conclusion is "inconclusive, probably small", not "text works".
+Honest weak spot: the nominal 80% interval. Raw q10-q90 covers only 67% on test; after conformal
+calibration on validation 75%, still below 80% because the regime shifts between validation and test (the
+baseline intervals reach 78-80% but are narrower only in the point sense, i.e. they are not better).
+Hyper-parameter tuning (random search on validation log-loss) and a LightGBM + logistic-regression ensemble
+gave no gain on test (PR-AUC 0.725 / 0.729 vs 0.727), so the default parameters are kept.
+
+## Optional: text data (public Telegram channels)
+`python -m src.telegram <channel> --since 2026-06-01` scrapes the public web preview (~1 request/s,
+publication timestamps only). Features per origin are counts of posts published before `t` that mention the
+raion's oblast and/or a threat keyword (UAV / missile / KAB) plus national volume.
+For Task A the channel `kpszsu` (22k posts) gave **no measurable gain** (macro PR-AUC with/without text, 6 h:
+0.545 vs 0.538; 1-3 h within +-0.01). Likely reasons: reports appear almost simultaneously with the alert
+(no lead time), crude keyword matching, only ~50 training days. See `reports/`.
 
 ## Limitations
-* Results vary with the period (see rolling-origin table).
-* Text covers one channel and ~100 days; posts show current (possibly edited) text.
-* Alert history cannot see the cause (launch events), so onset timing is the weak point.
+* Single data source up to 2026-09-07; results depend on the period (see rolling-origin table).
+* Task B intervals are not well calibrated under regime shift.
+* Text: few channels, ~100 days; posts show current (possibly edited) text.
+* Alert history cannot see the cause of an alert (launch events), so onset timing is the weak point.
 
 ## Run
 ```bash
 pip install -r requirements.txt
 python -m pytest tests -q
-python -m src.evaluate --horizon 6            # writes reports/results_h6.json
-python -m src.evaluate --horizon 6 --neighbors --tag _neighbors
+python -m src.evaluate --horizon 6              # Task A, writes reports/results_h6.json
+python -m src.walk_forward --horizon 6          # rolling origin + bootstrap
+python -m src.duration                          # Task B (add --tune for random search)
 ```
