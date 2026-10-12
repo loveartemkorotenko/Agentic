@@ -104,6 +104,12 @@ For Task A the channel `kpszsu` (22k posts) gave **no measurable gain** (macro P
 0.545 vs 0.538; 1-3 h within +-0.01). Likely reasons: reports appear almost simultaneously with the alert
 (no lead time), crude keyword matching, only ~50 training days. See `reports/`.
 
+For Task B (end of alert) the same text features (channels `kpszsu` + `war_monitor`, period 2026-06-01.., test last 30 days,
+~50 training days) gave a small, unverified change: P(end <= 60 min) PR-AUC 0.675 -> 0.691, Brier 0.1461 -> 0.1455,
+MAE 302 -> 301 min (best baseline MAE 283 min: with so little training data the model does not beat it on MAE).
+Single split, no CI: treat as "possibly small positive", not as a result. Two more channels were scraped
+(`povitryanatrivogaaa`, `kudy_letyt`) but not evaluated for lack of time.
+
 ## Limitations
 * Single data source up to 2026-09-07; results depend on the period (see rolling-origin table).
 * Task B intervals are not well calibrated under regime shift.
