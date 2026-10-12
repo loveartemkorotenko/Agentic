@@ -31,7 +31,7 @@ def neighbor_weights(idx, state, cutoff, k: int = 5) -> np.ndarray:
 
 
 def build_dataset(idx, units, unit_oblast, state, starts, horizon_h: int,
-                  require_target: bool = True, W=None) -> pd.DataFrame:
+                  require_target: bool = True, W=None, extra=None) -> pd.DataFrame:
     T, K = state.shape
     Hn = T // BPH
     b = np.arange(Hn) * BPH                                 # grid step of each origin t
@@ -92,6 +92,9 @@ def build_dataset(idx, units, unit_oblast, state, starts, horizon_h: int,
         feats["nb_occ_24h"] = np.nan_to_num(past_sum(occ, 24) / 24, nan=0.0) @ W.T
     feats["nat_active_frac"] = np.repeat(act_now.mean(1, keepdims=True, dtype=np.float32), K, 1)
     feats["nat_occ_24h"] = np.repeat(np.nan_to_num(past_sum(occ, 24) / 24).mean(1, keepdims=True), K, 1)
+
+    if extra:                                               # e.g. text features, already (Hn, K)
+        feats.update(extra)
 
     local = hour_ts.tz_convert("Europe/Kyiv")
     cal = {"hour": local.hour.to_numpy(), "dow": local.dayofweek.to_numpy()}

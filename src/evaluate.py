@@ -10,6 +10,8 @@ from sklearn.metrics import average_precision_score, brier_score_loss, f1_score,
 
 from src.data import grid, load_alerts
 from src.features import build_dataset, neighbor_weights
+from src.telegram import load as load_posts
+from src.text_features import text_features
 
 ROOT = Path(__file__).resolve().parents[1]
 FOCUS = ["Kyiv City", "Kharkivska oblast / Kharkivskyi raion", "Dnipropetrovska oblast / Dniprovskyi raion",
@@ -61,12 +63,18 @@ def baselines(tr, df):
     return out
 
 
-def run(horizon_h=6, test_days=60, val_days=60, since="2024-01-01", drop_ids=False, tag="", neighbors=False, end_offset_days=0, out_dir=ROOT / "reports"):
+def run(horizon_h=6, test_days=60, val_days=60, since="2024-01-01", drop_ids=False, tag="", neighbors=False, end_offset_days=0, text=None, out_dir=ROOT / "reports"):
     alerts = load_alerts(since=since)
     idx, units, uo, state, starts = grid(alerts)
     train_end = idx[-1] - pd.Timedelta(days=test_days + val_days) - pd.Timedelta(hours=horizon_h)
     W = neighbor_weights(idx, state, train_end) if neighbors else None
-    df = build_dataset(idx, units, uo, state, starts, horizon_h, W=W)
+    extra = None
+    if text:  # channel posts; rows before the first post carry no text signal, so drop them
+        posts = load_posts(text)
+        extra = text_features(posts, idx, units, uo)
+    df = build_dataset(idx, units, uo, state, starts, horizon_h, W=W, extra=extra)
+    if text:
+        df = df[df["time"] >= posts["published_at"].min().ceil("D") + pd.Timedelta(days=1)]
     if end_offset_days:  # pretend the data ends earlier: rolling-origin evaluation
         df = df[df["time"] <= df["time"].max() - pd.Timedelta(days=end_offset_days)]
     tr, va, te = split(df, horizon_h, test_days, val_days)
@@ -141,6 +149,7 @@ if __name__ == "__main__":
     ap.add_argument("--since", default="2024-01-01")
     ap.add_argument("--drop-ids", action="store_true")
     ap.add_argument("--tag", default="")
+    ap.add_argument("--text", default=None, help="telegram channel with scraped posts")
     ap.add_argument("--neighbors", action="store_true", help="add data-driven neighbour features (no gain, kept as ablation)")
     a = ap.parse_args()
-    run(a.horizon, a.test_days, a.val_days, a.since, a.drop_ids, a.tag, a.neighbors)
+    run(a.horizon, a.test_days, a.val_days, a.since, a.drop_ids, a.tag, a.neighbors, text=a.text)
