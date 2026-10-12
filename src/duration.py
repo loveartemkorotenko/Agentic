@@ -22,6 +22,8 @@ from src.telegram import load as load_posts
 from src.text_features import text_features
 
 CAP = 1440.0
+RECENT_DAYS = 21
+MIN_GROUP = 200
 ELAPSED_BINS = [0, 15, 30, 60, 120, 240, 480, 1e9]
 PARAMS = dict(learning_rate=0.05, num_leaves=31, min_child_samples=100, feature_fraction=0.8,
               bagging_fraction=0.8, bagging_freq=1, lambda_l2=5.0, verbose=-1, seed=7)
@@ -130,9 +132,26 @@ def run(since="2024-01-01", test_days=60, val_days=60, text=None, tag="", tune=N
     vlo, vhi, vy = (q[0.1].predict(va[cols], num_iteration=q[0.1].best_iteration),
                     q[0.9].predict(va[cols], num_iteration=q[0.9].best_iteration), np.log1p(va["rem_cap"]).to_numpy())
     score = np.maximum(vlo - vy, vy - vhi)
-    corr = float(np.quantile(score, min(1.0, 0.8 * (1 + 1 / len(score)))))
-    llo = np.log1p(lo) - corr
-    lo_c, hi_c = np.expm1(np.maximum(llo, 0)), np.minimum(np.expm1(np.log1p(hi) + corr), CAP)
+    level = min(1.0, 0.8 * (1 + 1 / len(score)))
+    corr = float(np.quantile(score, level))
+    # A: calibrate on the most recent weeks of validation only (the regime drifts)
+    recent = (va["time"] >= va["time"].max() - pd.Timedelta(days=RECENT_DAYS)).to_numpy()
+    corr_recent = float(np.quantile(score[recent], min(1.0, 0.8 * (1 + 1 / recent.sum()))))
+    # B: Mondrian -- one correction per elapsed-time bucket, global fallback for small groups
+    def mondrian(mask, fallback):
+        out = {}
+        for g in np.unique(va["bucket"].to_numpy()):
+            m = mask & (va["bucket"].to_numpy() == g)
+            out[g] = float(np.quantile(score[m], min(1.0, 0.8 * (1 + 1 / m.sum())))) if m.sum() >= MIN_GROUP else fallback
+        return np.array([out.get(g, fallback) for g in te["bucket"].to_numpy()])
+    corr_b = mondrian(np.ones(len(va), bool), corr)
+    corr_ab = mondrian(recent, corr_recent)
+
+    def widen(c):
+        l_ = np.expm1(np.maximum(np.log1p(lo) - c, 0)); h_ = np.minimum(np.expm1(np.log1p(hi) + c), CAP)
+        return l_, h_
+    variants = {"cqr_global": corr, "A_recent_window": corr_recent, "B_mondrian_bucket": corr_b, "AB_recent_mondrian": corr_ab}
+    lo_c, hi_c = widen(corr)
     clf = {h: fit(tr, va, cols, "binary", (tr["rem_cap"] <= h).astype(int), (va["rem_cap"] <= h).astype(int), **kw)
            for h in (60, 120)}
     p_end = {h: m.predict(te[cols], num_iteration=m.best_iteration) for h, m in clf.items()}
@@ -160,6 +179,10 @@ def run(since="2024-01-01", test_days=60, val_days=60, text=None, tag="", tune=N
                                 "median_ae_min": round(float(np.median(np.abs(m - y))), 1)}
     res["interval_80"]["lightgbm"] = {"coverage": round(float(((y >= lo) & (y <= hi)).mean()), 3),
                                       "median_width_min": round(float(np.median(hi - lo)), 1)}
+    for name, c in variants.items():
+        l_, h_ = widen(c)
+        res["interval_80"]["lightgbm_" + name] = {"coverage": round(float(((y >= l_) & (y <= h_)).mean()), 3),
+                                                  "median_width_min": round(float(np.median(h_ - l_)), 1)}
     res["interval_80"]["lightgbm_conformal"] = {"coverage": round(float(((y >= lo_c) & (y <= hi_c)).mean()), 3),
                                                 "median_width_min": round(float(np.median(hi_c - lo_c)), 1),
                                                 "log_correction": round(corr, 3)}

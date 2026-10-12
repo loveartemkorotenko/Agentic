@@ -1,0 +1,163 @@
+{
+  "test_period": [
+    "2026-07-09 06:00:00+00:00",
+    "2026-09-07 05:00:00+00:00"
+  ],
+  "n_test": 44095,
+  "regression": {
+    "lightgbm": {
+      "mae_min": 248.3,
+      "mae_log": 0.9845,
+      "median_ae_min": 109.6
+    },
+    "bucket": {
+      "mae_min": 316.5,
+      "mae_log": 1.1759,
+      "median_ae_min": 130.0
+    },
+    "unit_bucket": {
+      "mae_min": 297.0,
+      "mae_log": 1.166,
+      "median_ae_min": 100.0
+    }
+  },
+  "ends_within": {
+    "60min": {
+      "pos_rate": 0.319,
+      "lightgbm": {
+        "pr_auc": 0.7266,
+        "roc_auc": 0.8524,
+        "brier": 0.1443
+      },
+      "bucket": {
+        "pr_auc": 0.5618,
+        "roc_auc": 0.7819,
+        "brier": 0.1729
+      },
+      "unit_bucket": {
+        "pr_auc": 0.6447,
+        "roc_auc": 0.7934,
+        "brier": 0.1692
+      },
+      "logreg": {
+        "pr_auc": 0.6971,
+        "brier": 0.1472
+      },
+      "ensemble": {
+        "weight_lgbm": 0.75,
+        "pr_auc": 0.7285,
+        "roc_auc": 0.854,
+        "brier": 0.1435
+      }
+    },
+    "120min": {
+      "pos_rate": 0.444,
+      "lightgbm": {
+        "pr_auc": 0.8364,
+        "roc_auc": 0.8672,
+        "brier": 0.1479
+      },
+      "bucket": {
+        "pr_auc": 0.7024,
+        "roc_auc": 0.7944,
+        "brier": 0.1849
+      },
+      "unit_bucket": {
+        "pr_auc": 0.7509,
+        "roc_auc": 0.7961,
+        "brier": 0.1887
+      }
+    }
+  },
+  "interval_80": {
+    "lightgbm": {
+      "coverage": 0.673,
+      "median_width_min": 561.8
+    },
+    "lightgbm_cqr_global": {
+      "coverage": 0.754,
+      "median_width_min": 634.9
+    },
+    "lightgbm_A_recent_window": {
+      "coverage": 0.761,
+      "median_width_min": 651.6
+    },
+    "lightgbm_B_mondrian_bucket": {
+      "coverage": 0.756,
+      "median_width_min": 638.5
+    },
+    "lightgbm_AB_recent_mondrian": {
+      "coverage": 0.761,
+      "median_width_min": 652.7
+    },
+    "lightgbm_conformal": {
+      "coverage": 0.754,
+      "median_width_min": 634.9,
+      "log_correction": 0.095
+    },
+    "bucket": {
+      "coverage": 0.803,
+      "median_width_min": 440.0
+    },
+    "unit_bucket": {
+      "coverage": 0.782,
+      "median_width_min": 455.0
+    }
+  },
+  "kyiv": {
+    "n": 146,
+    "lgbm_mae": 50.8,
+    "baseline_mae": 58.6,
+    "coverage80": 0.801
+  },
+  "bootstrap_week": {
+    "mae_min_improvement_vs_unit_bucket": {
+      "mean": 48.65029653823007,
+      "ci95": [
+        37.60932514260704,
+        60.705317592700744
+      ],
+      "n_weeks": 10,
+      "p_better": 1.0
+    },
+    "brier60_improvement_vs_unit_bucket": {
+      "mean": 0.024862561362072787,
+      "ci95": [
+        0.022030497103073643,
+        0.0273210385461652
+      ],
+      "n_weeks": 10,
+      "p_better": 1.0
+    }
+  },
+  "Kharkivska oblast / Kharkivskyi raion": {
+    "n": 1162,
+    "lgbm_mae": 201.8,
+    "baseline_mae": 227.7,
+    "coverage80": 0.799
+  },
+  "Dnipropetrovska oblast / Dniprovskyi raion": {
+    "n": 314,
+    "lgbm_mae": 39.5,
+    "baseline_mae": 42.0,
+    "coverage80": 0.803
+  },
+  "Odeska oblast / Odeskyi raion": {
+    "n": 307,
+    "lgbm_mae": 30.9,
+    "baseline_mae": 31.1,
+    "coverage80": 0.782
+  },
+  "top_features_gain_median": {
+    "occ_mean_168h": 569263.3,
+    "run_len_min": 358445.9,
+    "occ_same_hour_7d": 204490.8,
+    "occ_mean_72h": 116600.6,
+    "hour": 75127.8,
+    "starts_168h": 53475.9,
+    "starts_72h": 39217.4,
+    "nat_active_frac": 35592.3,
+    "unit": 31548.2,
+    "occ_mean_24h": 29811.1
+  }
+}
