@@ -61,12 +61,14 @@ def baselines(tr, df):
     return out
 
 
-def run(horizon_h=6, test_days=60, val_days=60, since="2024-01-01", drop_ids=False, tag="", neighbors=False, out_dir=ROOT / "reports"):
+def run(horizon_h=6, test_days=60, val_days=60, since="2024-01-01", drop_ids=False, tag="", neighbors=False, end_offset_days=0, out_dir=ROOT / "reports"):
     alerts = load_alerts(since=since)
     idx, units, uo, state, starts = grid(alerts)
     train_end = idx[-1] - pd.Timedelta(days=test_days + val_days) - pd.Timedelta(hours=horizon_h)
     W = neighbor_weights(idx, state, train_end) if neighbors else None
     df = build_dataset(idx, units, uo, state, starts, horizon_h, W=W)
+    if end_offset_days:  # pretend the data ends earlier: rolling-origin evaluation
+        df = df[df["time"] <= df["time"].max() - pd.Timedelta(days=end_offset_days)]
     tr, va, te = split(df, horizon_h, test_days, val_days)
     print(f"data end (UTC): {alerts['finished_at'].max()}  |  rows train/val/test = "
           f"{len(tr):,}/{len(va):,}/{len(te):,}")

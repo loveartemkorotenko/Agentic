@@ -59,8 +59,18 @@ Ablations (same split, `reports/`): dropping raion/oblast id features -> 0.529 (
 adding data-driven neighbour features (top-5 correlated raions, estimated on train only)
 -> 0.535 (no gain, left optional via `--neighbors`).
 
+## Robustness: rolling-origin validation (5 x 30-day windows, horizon 6 h)
+`python -m src.walk_forward` retrains for each window (own train / 45-day validation / embargo).
+Macro PR-AUC on onset rows, LightGBM minus best baseline: +0.021, +0.033, +0.042, +0.016, +0.003
+(mean +0.023, positive in 5/5 windows). The lift is consistent but small and **shrinks in the most
+recent window**, where LightGBM beats the best baseline in under half of raions. Absolute values
+are not comparable across windows (different raions pass the min-positives filter).
+
+Shorter horizons (1/2/3 h, single split): lift over the best baseline is +0.026 / +0.009 / +0.004,
+i.e. almost none; for Kyiv F1 at 1-2 h is ~0. Alert history alone does not contain the launch signal.
+
 ## Limitations
-* Single temporal split (60 days); results vary with the period.
+* Results vary with the period (see rolling-origin table).
 * Only alert history is used; news / Telegram text was not added (possible extension: only
   posts timestamped before `t`).
 * Alert history cannot see the cause (launch events), so onset timing is the weak point.
